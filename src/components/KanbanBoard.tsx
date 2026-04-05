@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, LogOut } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { KanbanColumn } from './KanbanColumn';
 import { TaskModal } from './TaskModal';
 import { ColumnModal } from './ColumnModal';
+import { AuthForm } from './AuthForm';
 import type { Column, Task } from '../types/kanban';
 
 export function KanbanBoard() {
@@ -16,9 +17,24 @@ export function KanbanBoard() {
   const [taskModalMode, setTaskModalMode] = useState<'create' | 'edit'>('create');
   const [loading, setLoading] = useState(true);
   const [boardId, setBoardId] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     initializeBoard();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setIsAuthenticated(!!session);
+        if (event === 'SIGNED_OUT') {
+          setColumns([]);
+          setBoardId(null);
+        }
+      }
+    );
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const initializeBoard = async () => {
@@ -26,9 +42,12 @@ export function KanbanBoard() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
+        setIsAuthenticated(false);
         setLoading(false);
         return;
       }
+
+      setIsAuthenticated(true);
 
       let { data: boards } = await supabase
         .from('boards')
@@ -58,6 +77,18 @@ export function KanbanBoard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAuthSuccess = () => {
+    setLoading(true);
+    initializeBoard();
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setIsAuthenticated(false);
+    setColumns([]);
+    setBoardId(null);
   };
 
   const createDefaultColumns = async (boardId: string) => {
@@ -228,6 +259,10 @@ export function KanbanBoard() {
     setDraggedTask(null);
   };
 
+  if (!isAuthenticated && !loading) {
+    return <AuthForm onAuthSuccess={handleAuthSuccess} />;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 flex items-center justify-center">
@@ -240,9 +275,18 @@ export function KanbanBoard() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50">
       <div className="h-screen flex flex-col">
         <header className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="px-8 py-6">
-            <h1 className="text-3xl font-bold text-gray-900">Kanban Board</h1>
-            <p className="text-gray-600 mt-1">Organize your tasks efficiently</p>
+          <div className="px-8 py-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Kanban Board</h1>
+              <p className="text-gray-600 mt-1">Organize your tasks efficiently</p>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
           </div>
         </header>
 
